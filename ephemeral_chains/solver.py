@@ -121,10 +121,24 @@ def _random_feasible_start(
 def _neighbors(
     assignment: Assignment, n_chains: int, rng: np.random.Generator, k: int
 ) -> List[Assignment]:
-    """k random single-agent moves (to another chain or to None)."""
+    """k random moves: single-agent relocations plus chain-opening pairs.
+
+    Single-agent moves cannot open a chain (a chain is open only with both
+    an application and an operator on it), so a quarter of the moves place
+    one application and one operator together on a random chain.
+    """
     moves: List[Assignment] = []
     n_apps = len(assignment.app_chain)
     n_ops = len(assignment.op_chain)
+    for _ in range(max(1, k // 4)):  # pair-opening moves
+        a = int(rng.integers(0, n_apps))
+        o = int(rng.integers(0, n_ops))
+        c = int(rng.integers(0, n_chains))
+        app_chain = list(assignment.app_chain)
+        op_chain = list(assignment.op_chain)
+        app_chain[a] = c
+        op_chain[o] = c
+        moves.append(Assignment(app_chain=tuple(app_chain), op_chain=tuple(op_chain)))
     for _ in range(k):
         if rng.random() < n_apps / (n_apps + n_ops):
             i = int(rng.integers(0, n_apps))
