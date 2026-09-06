@@ -1,6 +1,6 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-results/*.csv
+results/*.log
 results/*.png
 *.egg-info/
