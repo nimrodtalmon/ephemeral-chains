@@ -23,7 +23,8 @@ for cap_scale in (0.5, 4.0):
                 ev = res.evaluation
                 napp = sum(ev.app_utils[j]/inst.apps[j].gas for j in range(inst.n_apps))/inst.n_apps
                 nsys = ev.sys_util / bounds.q_sys
-                rows.append((cap_scale, i, w.app, w.op, w.sys, napp, nsys))
+                nop = sum(ev.op_utils)/len(ev.op_utils)
+                rows.append((cap_scale, i, w.app, w.op, w.sys, napp, nsys, nop))
 with open("results/governance_figure_data.csv","w",newline="") as f:
-    wcsv = csv.writer(f); wcsv.writerow(["cap_scale","seed","w_app","w_op","w_sys","napp","nsys"]); wcsv.writerows(rows)
+    wcsv = csv.writer(f); wcsv.writerow(["cap_scale","seed","w_app","w_op","w_sys","napp","nsys","nop"]); wcsv.writerows(rows)
 print("rows:", len(rows))
