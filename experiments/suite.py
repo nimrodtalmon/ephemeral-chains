@@ -129,7 +129,46 @@ def misreporting(args) -> None:
                "rel_gain"])
 
 
+
+def dispersion(args) -> None:
+    """Dispersion of per-application utility across sampled near-optima.
+
+    Approximates the practical randomization of Section 5 (tie-breaking
+    over near-optimal solutions): per instance, run the solver under many
+    seeds, keep solutions within a factor ``EPS`` of the best objective
+    found, and measure how much each application's utility varies across
+    them (coefficient of variation, aggregated over served applications).
+    """
+    EPS = 0.01  # near-optimality: within 1% of the best objective found
+    N_SEEDS = 25
+    rows = []
+    rule = THROUGHPUT_RULES["min"]
+    for i in range(args.instances):
+        seed = args.seed + i
+        inst = generate(CONFIG, seed)
+        runs = [solve_local_search(inst, rule, WEIGHTS, seed=1000 * seed + j)
+                for j in range(N_SEEDS)]
+        best = max(r.evaluation.objective for r in runs)
+        near = [r for r in runs if r.evaluation.objective >= best * (1 - EPS)]
+        utils = np.array([r.evaluation.app_utils for r in near])  # runs x apps
+        means = utils.mean(axis=0)
+        stds = utils.std(axis=0)
+        served = means > 1e-9
+        rows.append(dict(
+            seed=seed, n_near_optima=len(near),
+            n_distinct=len({tuple(u) for u in np.round(utils, 6)}),
+            mean_cv=float((stds[served] / means[served]).mean()) if served.any() else 0.0,
+            max_cv=float((stds[served] / means[served]).max()) if served.any() else 0.0,
+            best_objective=best,
+        ))
+    write_csv(args.out or "dispersion.csv", rows,
+              ["seed", "n_near_optima", "n_distinct", "mean_cv", "max_cv",
+               "best_objective"])
+
+
+
 EXPERIMENTS = {
+    "dispersion": dispersion,
     "sensitivity_normalization": sensitivity_normalization,
     "sensitivity_throughput": sensitivity_throughput,
     "misreporting": misreporting,
