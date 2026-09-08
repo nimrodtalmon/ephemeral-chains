@@ -28,11 +28,12 @@ from ephemeral_chains.model import (
     Weights,
     chain_state,
 )
-from ephemeral_chains.solver import solve_local_search
+from ephemeral_chains.solver import solve_exact, solve_local_search
 from experiments.common import base_parser, write_csv
 
 WEIGHTS = Weights(app=1 / 3, op=1 / 3, sys=1 / 3)
 CONFIG = GeneratorConfig(n_apps=20, n_ops=10)
+SMALL_CONFIG = GeneratorConfig(n_apps=4, n_ops=3)  # exact enumeration feasible
 GRID = [0.25, 0.5, 0.8, 1.0, 1.25, 2.0, 4.0]  # multiplicative misreports / scales
 
 
@@ -130,6 +131,68 @@ def misreporting(args) -> None:
 
 
 
+def misreporting_exact(args) -> None:
+    """Misreporting gains on small instances, solved exactly and heuristically.
+
+    Same protocol as :func:`misreporting`, but on instances small enough
+    for exhaustive enumeration (``SMALL_CONFIG``), for *every* agent and
+    coordinate, with each instance re-solved both exactly and by local
+    search. Comparing the two columns separates true manipulation gains
+    from solver noise.
+    """
+    rows = []
+    rule = THROUGHPUT_RULES["min"]
+    for i in range(args.instances):
+        seed = args.seed + i
+        inst = generate(SMALL_CONFIG, seed)
+        truthful = {
+            "exact": solve_exact(inst, rule, WEIGHTS),
+            "ls": solve_local_search(inst, rule, WEIGHTS, seed=seed),
+        }
+        for role in ("app", "op"):
+            n = inst.n_apps if role == "app" else inst.n_ops
+            for idx in range(n):
+                agent = inst.apps[idx] if role == "app" else inst.ops[idx]
+                for coord in ("gas", "gasprice"):
+                    row = dict(seed=seed, role=role, agent=idx, coord=coord)
+                    for name in ("exact", "ls"):
+                        ev = truthful[name].evaluation
+                        true_util = (ev.app_utils[idx] if role == "app"
+                                     else ev.op_utils[idx])
+                        best_gain = 0.0
+                        for factor in GRID:
+                            if factor == 1.0:
+                                continue
+                            if role == "app":
+                                mis = App(**{**agent.__dict__,
+                                             coord: getattr(agent, coord) * factor})
+                                mis_inst = inst.with_app(idx, mis)
+                            else:
+                                mis = Op(**{**agent.__dict__,
+                                            coord: getattr(agent, coord) * factor})
+                                mis_inst = inst.with_op(idx, mis)
+                            if name == "exact":
+                                res = solve_exact(mis_inst, rule, WEIGHTS)
+                            else:
+                                res = solve_local_search(
+                                    mis_inst, rule, WEIGHTS, seed=seed,
+                                    warm_start=truthful["ls"].assignment)
+                            if role == "app":
+                                util = min(res.evaluation.app_utils[idx], agent.gas)
+                            else:
+                                util = res.evaluation.op_utils[idx]
+                            best_gain = max(best_gain, util - true_util)
+                        row[f"true_util_{name}"] = true_util
+                        row[f"max_gain_{name}"] = best_gain
+                        row[f"rel_gain_{name}"] = (best_gain / true_util
+                                                   if true_util > 0 else "")
+                    rows.append(row)
+    write_csv(args.out or "misreporting_exact.csv", rows,
+              ["seed", "role", "agent", "coord",
+               "true_util_exact", "max_gain_exact", "rel_gain_exact",
+               "true_util_ls", "max_gain_ls", "rel_gain_ls"])
+
+
 def dispersion(args) -> None:
     """Dispersion of per-application utility across sampled near-optima.
 
@@ -172,6 +235,7 @@ EXPERIMENTS = {
     "sensitivity_normalization": sensitivity_normalization,
     "sensitivity_throughput": sensitivity_throughput,
     "misreporting": misreporting,
+    "misreporting_exact": misreporting_exact,
 }
 
 
