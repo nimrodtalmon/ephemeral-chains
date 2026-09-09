@@ -32,7 +32,7 @@ from dataclasses import replace
 
 from experiments.landscape import COORDS, FACTORS, STAKES, WEIGHTS, cell_config
 
-N_APPS, N_OPS = 5, 3
+N_APPS, N_OPS = 4, 3  # exploratory; final runs use 5x3 or larger
 
 CELLS = [(slack, cap_sigma, "pareto", "min", w)
          for slack in (0.5, 4.0) for cap_sigma in (0.0, 0.8)
@@ -142,9 +142,11 @@ def main() -> None:
     parser = base_parser(__doc__)
     parser.set_defaults(instances=3)
     parser.add_argument("--rounds", type=int, default=10)
+    parser.add_argument("--cell", type=int, default=None, help="run a single cell index")
     args = parser.parse_args()
     rows = []
-    for slack, cap_sigma, stake_name, rule_name, w_name in CELLS:
+    cells = CELLS if args.cell is None else [CELLS[args.cell]]
+    for slack, cap_sigma, stake_name, rule_name, w_name in cells:
         config = replace(cell_config(slack, cap_sigma, STAKES[stake_name]),
                          n_apps=N_APPS, n_ops=N_OPS)
         for i in range(args.instances):

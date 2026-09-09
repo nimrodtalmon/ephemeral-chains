@@ -81,6 +81,13 @@ def manipulability(inst, rule, weights, solve, rng) -> dict:
             best = 0.0
             for coord in COORDS:
                 for factor in FACTORS:
+                    # honorable misreports only (see experiments/dynamics.py)
+                    if role == "app" and ((coord == "gasprice" and factor > 1)
+                                          or (coord == "stake" and factor < 1)):
+                        continue
+                    if role == "op" and ((coord == "gasprice" and factor < 1)
+                                         or (coord in ("gas", "stake") and factor > 1)):
+                        continue
                     mis = (App if role == "app" else Op)(
                         **{**agent.__dict__, coord: getattr(agent, coord) * factor})
                     mis_inst = (inst.with_app(idx, mis) if role == "app"

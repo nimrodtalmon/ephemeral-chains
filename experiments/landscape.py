@@ -10,7 +10,9 @@ noise on application caps; 0 = homogeneous caps) x stake heterogeneity
 (uniform vs. Pareto) x throughput rule x governance weights. For every
 instance, every agent, and every coordinate (gas, gasprice, stake), the
 instance is re-solved exactly under a multiplicative grid of unilateral
-misreports and the maximal truthfully-valued gain is recorded.
+misreports and the truthfully-valued gain of every misreport is
+recorded (one row per agent, coordinate, and factor), so that any
+restriction of the strategy set can be applied at analysis time.
 
 Writes one CSV per cell to ``results/landscape/`` (so long runs can be
 resumed) and merges them into ``results/landscape.csv``.
@@ -87,7 +89,6 @@ def run_cell(slack, cap_sigma, stake_name, rule_name, weight_name, n_instances, 
                 true_util = (min(ev.app_utils[idx], agent.gas) if role == "app"
                              else ev.op_utils[idx])
                 for coord in COORDS:
-                    best_gain, best_factor = 0.0, 1.0
                     for factor in FACTORS:
                         mis = (App if role == "app" else Op)(
                             **{**agent.__dict__, coord: getattr(agent, coord) * factor})
@@ -95,24 +96,21 @@ def run_cell(slack, cap_sigma, stake_name, rule_name, weight_name, n_instances, 
                                     else inst.with_op(idx, mis))
                         res = solve_exact(mis_inst, rule, weights)
                         util = true_utility(role, idx, agent, factor, coord, res.evaluation)
-                        if util - true_util > best_gain:
-                            best_gain, best_factor = util - true_util, factor
-                    rows.append(dict(
-                        slack=slack, cap_sigma=cap_sigma, stake=stake_name,
-                        rule=rule_name, weights=weight_name, seed=seed,
-                        supply_demand=supply / demand,
-                        role=role, agent=idx, coord=coord,
-                        true_util=true_util,
-                        service=(true_util / agent.gas if role == "app" else ""),
-                        max_gain=best_gain, best_factor=best_factor,
-                        rel_gain=(best_gain / true_util if true_util > 0 else ""),
-                    ))
+                        rows.append(dict(
+                            slack=slack, cap_sigma=cap_sigma, stake=stake_name,
+                            rule=rule_name, weights=weight_name, seed=seed,
+                            supply_demand=supply / demand,
+                            role=role, agent=idx, coord=coord, factor=factor,
+                            true_util=true_util,
+                            service=(true_util / agent.gas if role == "app" else ""),
+                            gain=util - true_util,
+                            rel_gain=((util - true_util) / true_util if true_util > 0 else ""),
+                        ))
     return rows
 
 
 FIELDS = ["slack", "cap_sigma", "stake", "rule", "weights", "seed", "supply_demand",
-          "role", "agent", "coord", "true_util", "service", "max_gain",
-          "best_factor", "rel_gain"]
+          "role", "agent", "coord", "factor", "true_util", "service", "gain", "rel_gain"]
 
 
 def main() -> None:
