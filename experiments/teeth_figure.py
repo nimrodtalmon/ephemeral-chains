@@ -2,8 +2,8 @@
 
 Left: feature sensitivity on sampled large instances (Spearman rank
 correlation between instance features and each outcome; results/map_large.csv).
-Right: the three switches, exactly (results/axes.csv): the ask channel
-against cap heterogeneity, and the demand and stake channels against slack.
+Right: partial dependence of the key outcomes on the two features that
+matter, from the same instances (quantile-binned means).
 """
 from __future__ import annotations
 import pathlib, sys
@@ -31,7 +31,6 @@ def main(out=RESULTS_DIR / "teeth.pdf"):
         cs = [c for c in m.columns if c.startswith(g + "_")]
         m[f"steer_{g}"] = m[cs].max(axis=1) - m[cs].min(axis=1)
     R = np.array([[spearmanr(m[f], m[o])[0] for o, _ in OUTS] for f, _ in FEATS])
-    a = pd.read_csv(RESULTS_DIR / "axes.csv")
 
     fig = plt.figure(figsize=(9.8, 3.3))
     gs = fig.add_gridspec(1, 3, width_ratios=[2.3, 1, 1], wspace=0.5)
@@ -46,27 +45,36 @@ def main(out=RESULTS_DIR / "teeth.pdf"):
     ax.set_title("(a) which feature moves what (Spearman, large instances)", fontsize=8, loc="left")
     plt.setp(ax.get_xticklabels(), rotation=0)
 
-    def curve(ax, sub, col, label, color, mk, logx=False):
-        levels = sorted(sub.level.unique())
-        M = np.array([[sub[(sub.level == l) & (sub.seed == s)][col].iloc[0] for l in levels]
-                      for s in sorted(sub.seed.unique())])
-        mu, se = M.mean(0), M.std(0, ddof=1) / np.sqrt(M.shape[0])
-        ax.plot(levels, mu, marker=mk, color=color, label=label, lw=1.4, ms=4)
-        ax.fill_between(levels, mu - se, mu + se, color=color, alpha=0.15, lw=0)
+    def pdp(ax, feat, col, label, color, mk, logx=False, nbins=5):
+        """Partial dependence: binned means (quantile bins) with standard errors."""
+        x = m[feat].to_numpy(); y = m[col].to_numpy()
+        edges = np.quantile(x, np.linspace(0, 1, nbins + 1))
+        xs, mu, se = [], [], []
+        for k in range(nbins):
+            sel = (x >= edges[k]) & (x <= edges[k + 1]) if k == nbins - 1 else (x >= edges[k]) & (x < edges[k + 1])
+            if sel.sum() < 2: continue
+            xs.append(np.median(x[sel])); mu.append(y[sel].mean()); se.append(y[sel].std(ddof=1) / np.sqrt(sel.sum()))
+        xs, mu, se = map(np.array, (xs, mu, se))
+        ax.plot(xs, mu, marker=mk, color=color, label=label, lw=1.4, ms=4)
+        ax.fill_between(xs, mu - se, mu + se, color=color, alpha=0.15, lw=0)
         if logx: ax.set_xscale("log")
 
-    ax1 = fig.add_subplot(gs[1]); sub = a[a.axis == "cap"]
-    curve(ax1, sub, "manip_op_gasprice_frac", "operators: raise ask", "#d62728", "s")
-    ax1.set_xlabel("cap heterogeneity", fontsize=8); ax1.set_ylabel("fraction who profit", fontsize=8)
-    ax1.set_title("(b) the price switch (exact)", fontsize=8, loc="left")
-    ax2 = fig.add_subplot(gs[2]); sub = a[a.axis == "slack"]
-    curve(ax2, sub, "manip_app_gas_frac", "applications: inflate demand", "#1f77b4", "o", logx=True)
-    curve(ax2, sub, "manip_op_stake_frac", "operators: under-lock stake", "#9467bd", "^", logx=True)
-    ax2.set_xlabel("slack (capacity scale)", fontsize=8); ax2.set_ylabel("fraction who profit", fontsize=8)
-    ax2.set_title("(c) the quantity switch (exact)", fontsize=8, loc="left")
+    ax1 = fig.add_subplot(gs[1])
+    pdp(ax1, "cap_cv", "steer_nsys", "fee steerability", "#2ca02c", "^")
+    pdp(ax1, "cap_cv", "steer_nop", "operator steerability", "#ff7f0e", "s")
+    pdp(ax1, "cap_cv", "steer_napp", "application steerability", "#1f77b4", "o")
+    ax1.set_xlabel("cap heterogeneity (CV)", fontsize=8)
+    ax1.set_title("(b) along cap heterogeneity", fontsize=8, loc="left")
+    ax2 = fig.add_subplot(gs[2])
+    pdp(ax2, "supply_demand", "manip_app_gas_frac", "applications: inflate demand", "#1f77b4", "o", logx=True)
+    pdp(ax2, "supply_demand", "manip_op_stake_frac", "operators: under-lock stake", "#9467bd", "^", logx=True)
+    pdp(ax2, "supply_demand", "steer_nsys", "fee steerability", "#2ca02c", "s", logx=True)
+    ax2.set_xlabel("slack (supply / demand)", fontsize=8)
+    ax2.set_title("(c) along slack", fontsize=8, loc="left")
     for x in (ax1, ax2):
         x.grid(alpha=0.25); x.tick_params(labelsize=7); x.legend(fontsize=6.5, frameon=False)
-    ax1.set_ylim(0, 1); ax2.set_ylim(0, 1)
+        x.set_ylim(0, 1)
+    ax1.set_ylabel("steerability", fontsize=8); ax2.set_ylabel("fraction who profit / steerability", fontsize=8)
     fig.savefig(out, bbox_inches="tight")
     print(out)
 
