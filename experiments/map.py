@@ -132,7 +132,7 @@ def main() -> None:
         rng = np.random.default_rng(seed)
         config, params = sample_config(rng, n_apps, n_ops)
         inst = generate(config, seed)
-        bounds = NormalizationBounds.ideal(inst, rule, lambda i, r, w, b: (solve_exact(i, r, w, bounds=b) if exact else solve_local_search(i, r, w, bounds=b, seed=seed)))
+        bounds = NormalizationBounds.ideal(inst, rule, lambda i, r, w, b: (solve_exact(i, r, w, bounds=b) if exact else solve_local_search(i, r, w, bounds=b, seed=seed, restarts=32)))
         row = dict(seed=seed, n_apps=n_apps, n_ops=n_ops, exact=exact, **params, **features(inst))
         for w in simplex_grid(SIMPLEX_STEP):
             ev = (solve_exact(inst, rule, w, bounds=bounds) if exact else
