@@ -67,21 +67,28 @@ def features(inst) -> dict:
 
 
 def manipulability(inst, rule, weights, solve, rng) -> dict:
+    """Per-channel manipulability under honorable misreports.
+
+    Channels: application demand, operator ask, operator stake, operator
+    capacity (under-declared). For each, the fraction of sampled agents
+    with a profitable misreport and the mean relative gain.
+    """
     truthful_res = solve(inst)
     truthful = truthful_res.evaluation
-    gains = {"app": [], "op": []}
+    channels = {("app", "gas"): [], ("op", "gasprice"): [], ("op", "stake"): [], ("op", "gas"): []}
     for role in ("app", "op"):
         agents = inst.apps if role == "app" else inst.ops
-        indices = (range(len(agents)) if len(agents) <= AGENTS_PER_ROLE
-                   else sorted(rng.choice(len(agents), AGENTS_PER_ROLE, replace=False)))
-        for idx in indices:
+        n = len(agents)
+        idxs = rng.choice(n, size=min(AGENTS_PER_ROLE, n), replace=False) if AGENTS_PER_ROLE else range(n)
+        for idx in idxs:
             agent = agents[idx]
             true_util = (min(truthful.app_utils[idx], agent.gas) if role == "app"
                          else truthful.op_utils[idx])
-            best = 0.0
             for coord in COORDS:
+                if (role, coord) not in channels:
+                    continue
+                best = 0.0
                 for factor in FACTORS:
-                    # honorable misreports only (see experiments/dynamics.py)
                     if role == "app" and ((coord == "gasprice" and factor > 1)
                                           or (coord == "stake" and factor < 1)):
                         continue
@@ -96,15 +103,13 @@ def manipulability(inst, rule, weights, solve, rng) -> dict:
                     util = (min(ev.app_utils[idx], agent.gas) if role == "app"
                             else ev.op_utils[idx] * (factor if coord == "stake" else 1.0))
                     best = max(best, util - true_util)
-            gains[role].append((best, true_util))
+                channels[(role, coord)].append((best, true_util))
     out = {}
-    for role, g in gains.items():
-        out[f"manip_{role}_frac"] = mean(b > 1e-9 for b, _ in g)
+    for (role, coord), g in channels.items():
+        out[f"manip_{role}_{coord}_frac"] = mean(b > 1e-9 for b, _ in g)
         rel = [b / t for b, t in g if t > 0]
-        out[f"manip_{role}_rel"] = mean(rel) if rel else 0.0
-        out[f"manip_{role}_relmax"] = max(rel) if rel else 0.0
+        out[f"manip_{role}_{coord}_rel"] = mean(rel) if rel else 0.0
     return out
-
 
 def main() -> None:
     parser = base_parser(__doc__)
