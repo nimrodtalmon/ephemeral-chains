@@ -14,7 +14,7 @@ for cap_scale in (0.5, 4.0):
     cfg = replace(BASE, cap_mu=BASE.cap_mu + float(np.log(cap_scale)))
     for i in range(24):
         inst = generate(cfg, seed=i)
-        bounds = NormalizationBounds.analytic(inst)
+        bounds = NormalizationBounds.ideal(inst, rule, lambda i, r, w, b: solve_local_search(i, r, w, bounds=b))
         n = 5
         for a in range(n+1):
             for o in range(n+1-a):

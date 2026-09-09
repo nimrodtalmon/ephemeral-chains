@@ -161,13 +161,27 @@ class Weights:
 class NormalizationBounds:
     """Upper bounds used for min--max normalization (paper, Section 3.5).
 
-    ``analytic`` gives the loose instance-independent bounds from the
-    paper; the sensitivity experiments replace them by tighter or looser
-    variants via ``scale``.
+    ``analytic`` gives loose closed-form bounds; ``ideal`` (the default
+    used by the solvers) normalizes each group by its ideal point, i.e.,
+    the best value that group can attain on the instance, obtained by
+    solving with that group's weight set to one. Since a single-group
+    objective is invariant to normalization, the ideal point is
+    well defined without bounds.
     """
 
     q_op: float
     q_sys: float
+
+    @staticmethod
+    def ideal(instance: Instance, rule: "ThroughputRule", solve) -> "NormalizationBounds":
+        """Ideal-point bounds; ``solve(instance, rule, weights, bounds)`` is a solver."""
+        loose = NormalizationBounds.analytic(instance)
+        ev_op = solve(instance, rule, Weights(app=0.0, op=1.0, sys=0.0), loose).evaluation
+        ev_sys = solve(instance, rule, Weights(app=0.0, op=0.0, sys=1.0), loose).evaluation
+        q_op = sum(ev_op.op_utils) / instance.n_ops
+        q_sys = ev_sys.sys_util
+        return NormalizationBounds(q_op=q_op if q_op > 0 else loose.q_op,
+                                   q_sys=q_sys if q_sys > 0 else loose.q_sys)
 
     @staticmethod
     def analytic(instance: Instance, scale: float = 1.0) -> "NormalizationBounds":

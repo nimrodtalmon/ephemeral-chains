@@ -71,30 +71,72 @@ def solve_exact(
     Feasible only for very small instances (agents <= ~8).
     """
     start = time.perf_counter()
-    n_chains = min(instance.n_apps, instance.n_ops)
-    labels: List[Optional[int]] = [None] + list(range(n_chains))
+    candidates = _canonical_assignments(instance.n_apps, instance.n_ops)
+    if bounds is None:
+        bounds = _ideal_bounds_exact(instance, rule, candidates)
 
     best: Optional[Tuple[Evaluation, Assignment]] = None
-    seen: Set = set()
-    for app_choice in itertools.product(labels, repeat=instance.n_apps):
-        for op_choice in itertools.product(labels, repeat=instance.n_ops):
-            assignment = Assignment(app_chain=app_choice, op_chain=op_choice)
-            key = canonical_key(assignment)
-            if key in seen:
-                continue
-            seen.add(key)
-            ev = _evaluate_if_feasible(instance, assignment, rule, weights, bounds)
-            if ev is not None and (best is None or ev.objective > best[0].objective):
-                best = (ev, assignment)
+    for assignment in candidates:
+        ev = _evaluate_if_feasible(instance, assignment, rule, weights, bounds)
+        if ev is not None and (best is None or ev.objective > best[0].objective):
+            best = (ev, assignment)
 
     assert best is not None  # the empty assignment is always feasible
     return SolveResult(
         assignment=best[1],
         evaluation=best[0],
         seconds=time.perf_counter() - start,
-        evaluated=len(seen),
+        evaluated=len(candidates),
         exact=True,
     )
+
+
+_CANONICAL_CACHE: Dict[Tuple[int, int], List[Assignment]] = {}
+
+
+def _ideal_bounds_exact(instance, rule, candidates) -> NormalizationBounds:
+    """Ideal point of the operator and system groups in one enumeration.
+
+    Under any weights with positive fee or yield weight the clearing
+    price sits at the cap, so raw group utilities coincide with those of
+    the single-group problems and one pass suffices.
+    """
+    loose = NormalizationBounds.analytic(instance)
+    probe = Weights(app=0.0, op=0.5, sys=0.5)
+    q_op, q_sys = 0.0, 0.0
+    for assignment in candidates:
+        ev = _evaluate_if_feasible(instance, assignment, rule, probe, loose)
+        if ev is None:
+            continue
+        q_op = max(q_op, sum(ev.op_utils) / instance.n_ops)
+        q_sys = max(q_sys, ev.sys_util)
+    return NormalizationBounds(q_op=q_op if q_op > 0 else loose.q_op,
+                               q_sys=q_sys if q_sys > 0 else loose.q_sys)
+
+
+def _canonical_assignments(n_apps: int, n_ops: int) -> List[Assignment]:
+    """All assignments up to chain relabeling, for the given sizes.
+
+    Depends only on the sizes, not on the instance, so it is computed
+    once and reused across the many exact solves of a misreporting
+    sweep.
+    """
+    key = (n_apps, n_ops)
+    if key not in _CANONICAL_CACHE:
+        n_chains = min(n_apps, n_ops)
+        labels: List[Optional[int]] = [None] + list(range(n_chains))
+        seen: Set = set()
+        out: List[Assignment] = []
+        for app_choice in itertools.product(labels, repeat=n_apps):
+            for op_choice in itertools.product(labels, repeat=n_ops):
+                assignment = Assignment(app_chain=app_choice, op_chain=op_choice)
+                ckey = canonical_key(assignment)
+                if ckey in seen:
+                    continue
+                seen.add(ckey)
+                out.append(assignment)
+        _CANONICAL_CACHE[key] = out
+    return _CANONICAL_CACHE[key]
 
 
 def _random_feasible_start(
@@ -176,6 +218,13 @@ def solve_local_search(
     cost nothing; ``warm_start`` supports cross-epoch re-optimization.
     """
     start = time.perf_counter()
+    if bounds is None:
+        bounds = NormalizationBounds.ideal(
+            instance, rule,
+            lambda i, r, w, b: solve_local_search(i, r, w, bounds=b, seed=seed,
+                                                   restarts=restarts, iters=iters,
+                                                   neighborhood=neighborhood),
+        )
     rng = np.random.default_rng(seed)
     n_chains = max(1, min(instance.n_apps, instance.n_ops))
 

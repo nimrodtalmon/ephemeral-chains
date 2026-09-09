@@ -91,10 +91,13 @@ class GeneratorConfig:
     cap_sigma: float = 0.8
     stake_pareto_alpha: float = 1.5  # Pareto tail index for stakes
     stake_scale: float = 10.0
+    app_stake_scale: Optional[float] = None  # overrides stake_scale for apps
     app_price_base: float = 5.0
     op_price_base: float = 3.0
     price_sigma: float = 0.4  # log-scale noise on prices
     price_gas_corr: float = 0.3  # strength of price--size correlation
+    app_price_sigma: Optional[float] = None  # overrides price_sigma for caps
+    op_price_sigma: Optional[float] = None  # overrides price_sigma for asks
 
 
 def generate(config: GeneratorConfig, seed: int) -> Instance:
@@ -106,15 +109,18 @@ def generate(config: GeneratorConfig, seed: int) -> Instance:
     z = (np.log(app_gas) - config.gas_mu) / config.gas_sigma
     app_price = config.app_price_base * np.exp(
         config.price_gas_corr * z
-        + config.price_sigma * rng.standard_normal(config.n_apps)
+        + (config.price_sigma if config.app_price_sigma is None
+           else config.app_price_sigma) * rng.standard_normal(config.n_apps)
     )
-    app_stake = config.stake_scale * (
+    app_stake = (config.stake_scale if config.app_stake_scale is None
+                 else config.app_stake_scale) * (
         1.0 + rng.pareto(config.stake_pareto_alpha, config.n_apps)
     )
 
     op_gas = rng.lognormal(config.cap_mu, config.cap_sigma, config.n_ops)
     op_price = config.op_price_base * np.exp(
-        config.price_sigma * rng.standard_normal(config.n_ops)
+        (config.price_sigma if config.op_price_sigma is None
+         else config.op_price_sigma) * rng.standard_normal(config.n_ops)
     )
     op_stake = config.stake_scale * (
         1.0 + rng.pareto(config.stake_pareto_alpha, config.n_ops)

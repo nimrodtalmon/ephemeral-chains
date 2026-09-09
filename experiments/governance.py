@@ -12,7 +12,7 @@ price noise scale. Two per-instance summary statistics quantify
   mean normalized utility;
 * ``steer_structure``: range over the simplex of the number of chains.
 
-Normalization bounds are fixed per instance (analytic), so values are
+Normalization is by the ideal point of each group, so values are
 comparable across weight vectors.
 """
 
@@ -69,7 +69,7 @@ def main() -> None:
             for i in range(args.instances):
                 seed = args.seed + i
                 inst = generate(config, seed)
-                bounds = NormalizationBounds.analytic(inst)
+                bounds = NormalizationBounds.ideal(inst, rule, lambda i, r, w, b: solve_local_search(i, r, w, bounds=b))
                 supply = sum(o.gas for o in inst.ops)
                 demand = sum(a.gas for a in inst.apps)
 

@@ -133,8 +133,8 @@ def test_pooling_proposition_additive_uniform_prices():
             app_chain=tuple([0] * n_a), op_chain=tuple([0] * n_o)
         )
         pooled_ev = evaluate(inst, pooled, t_sum, Weights(app=0, op=0, sys=1.0))
-        assert res.evaluation.objective == pytest.approx(
-            pooled_ev.objective, rel=1e-9
+        assert res.evaluation.sys_util == pytest.approx(
+            pooled_ev.sys_util, rel=1e-9
         )
 
 
