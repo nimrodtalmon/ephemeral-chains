@@ -118,6 +118,7 @@ def main() -> None:
     parser.set_defaults(instances=4)
     parser.add_argument("--max-cells", type=int, default=None,
                         help="stop after this many not-yet-computed cells")
+    parser.add_argument("--rules", nargs="*", default=None, help="restrict to these rules")
     args = parser.parse_args()
     cell_dir = RESULTS_DIR / "landscape"
     cell_dir.mkdir(parents=True, exist_ok=True)
@@ -125,9 +126,9 @@ def main() -> None:
     for slack in SLACKS:
         for cap_sigma in CAP_SIGMAS:
             for stake_name in STAKES:
-                for rule_name in RULES:
+                for rule_name in (args.rules or RULES):
                     for weight_name in WEIGHTS:
-                        name = f"s{slack}_c{cap_sigma}_{stake_name}_{rule_name}_{weight_name}.csv"
+                        name = f"s{slack}_c{cap_sigma}_{stake_name}_{rule_name}_{weight_name}" + (f"_seed{args.seed}" if args.seed else "") + ".csv"
                         if (cell_dir / name).exists():
                             continue
                         rows = run_cell(slack, cap_sigma, stake_name, rule_name,

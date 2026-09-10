@@ -28,8 +28,12 @@ OUTS = [("steer_napp", "steer\napps"), ("steer_nop", "steer\nops"),
 def main(out=RESULTS_DIR / "teeth.pdf"):
     m = pd.read_csv(RESULTS_DIR / "map_large.csv")
     for g in ("napp", "nop", "nsys"):
+        # Steerability in units of the group's ideal point; on large
+        # instances the ideal is the best value found across the corner
+        # solve and the sweep (a lower bound on the true ideal).
         cs = [c for c in m.columns if c.startswith(g + "_")]
-        m[f"steer_{g}"] = m[cs].max(axis=1) - m[cs].min(axis=1)
+        best = m[cs].max(axis=1).clip(lower=1e-9)
+        m[f"steer_{g}"] = (m[cs].max(axis=1) - m[cs].min(axis=1)) / best
     R = np.array([[spearmanr(m[f], m[o])[0] for o, _ in OUTS] for f, _ in FEATS])
 
     fig = plt.figure(figsize=(9.8, 3.3))
@@ -66,9 +70,9 @@ def main(out=RESULTS_DIR / "teeth.pdf"):
     ax1.set_xlabel("cap heterogeneity (CV)", fontsize=8)
     ax1.set_title("(b) along cap heterogeneity", fontsize=8, loc="left")
     ax2 = fig.add_subplot(gs[2])
-    pdp(ax2, "supply_demand", "manip_app_gas_frac", "applications: inflate demand", "#1f77b4", "o", logx=True)
+    pdp(ax2, "supply_demand", "manip_app_gas_frac", "applications: inflate demand", "#17becf", "o", logx=True)
     pdp(ax2, "supply_demand", "manip_op_stake_frac", "operators: under-lock stake", "#9467bd", "^", logx=True)
-    pdp(ax2, "supply_demand", "steer_nsys", "fee steerability", "#2ca02c", "s", logx=True)
+    pdp(ax2, "supply_demand", "steer_napp", "application steerability", "#1f77b4", "s", logx=True)
     ax2.set_xlabel("slack (supply / demand)", fontsize=8)
     ax2.set_title("(c) along slack", fontsize=8, loc="left")
     for x in (ax1, ax2):
