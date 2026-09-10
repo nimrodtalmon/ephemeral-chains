@@ -27,7 +27,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from ephemeral_chains.instance import App, Op, generate
 from ephemeral_chains.model import THROUGHPUT_RULES
 from ephemeral_chains.solver import solve_exact
-from experiments.common import base_parser, write_csv
+import csv
+from experiments.common import base_parser, write_csv, RESULTS_DIR
 from dataclasses import replace
 
 from experiments.landscape import COORDS, FACTORS, STAKES, WEIGHTS, cell_config
@@ -143,20 +144,40 @@ def main() -> None:
     parser.set_defaults(instances=3)
     parser.add_argument("--rounds", type=int, default=10)
     parser.add_argument("--cell", type=int, default=None, help="run a single cell index")
+    parser.add_argument("--axes", action="store_true",
+                        help="run along the two axes of experiments/axes.py (same instances, uniform weights)")
     args = parser.parse_args()
     rows = []
+    out_name = args.out or ("dynamics_axes.csv" if args.axes else "dynamics.csv")
+    out_path = RESULTS_DIR / out_name
+    done = set()
+    if out_path.exists():
+        with open(out_path) as h:
+            done = {(float(r["slack"]), float(r["cap_sigma"]), int(r["seed"])) for r in csv.DictReader(h)}
     cells = CELLS if args.cell is None else [CELLS[args.cell]]
+    if args.axes:
+        from experiments.axes import CAP_LEVELS, SLACK_LEVELS
+        cells = ([(1.0, c, "pareto", "min", "uniform") for c in CAP_LEVELS]
+                 + [(s, 0.8, "pareto", "min", "uniform") for s in SLACK_LEVELS])
     for slack, cap_sigma, stake_name, rule_name, w_name in cells:
         config = replace(cell_config(slack, cap_sigma, STAKES[stake_name]),
                          n_apps=N_APPS, n_ops=N_OPS)
         for i in range(args.instances):
             seed = args.seed + i
+            if (float(slack), float(cap_sigma), seed) in done:
+                continue
             truth = generate(config, seed)
             row = run(truth, THROUGHPUT_RULES[rule_name], WEIGHTS[w_name], args.rounds)
             rows.append(dict(slack=slack, cap_sigma=cap_sigma, stake=stake_name,
                              rule=rule_name, weights=w_name, seed=seed, **row))
             print(rows[-1], flush=True)
-    write_csv(args.out or "dynamics.csv", rows, list(rows[0].keys()))
+            new = not out_path.exists()
+            with open(out_path, "a", newline="") as h:
+                w = csv.DictWriter(h, fieldnames=list(rows[-1].keys()))
+                if new:
+                    w.writeheader()
+                w.writerow(rows[-1])
+    print(f"{len(rows)} new rows -> {out_path}")
 
 
 if __name__ == "__main__":

@@ -225,11 +225,13 @@ def optimal_prices(
         if state is None:
             continue
         # Affine in p_c -> optimum at an endpoint; pick the better one.
+        # Ties (e.g., lambda_app = 1, where the objective ignores prices)
+        # are broken upward: the mechanism never leaves fee on the table.
         best_p, best_v = None, float("-inf")
-        for p in (state.price_lo, state.price_hi):
+        for p in (state.price_hi, state.price_lo):
             fee = p * state.gas
             value = weights.sys * fee + weights.op * fee / state.stake
-            if value > best_v:
+            if value > best_v + 1e-12:
                 best_p, best_v = p, value
         prices[c] = best_p
     return prices
